@@ -11,6 +11,8 @@
 
 *A playbook, a pre-built skeleton, and a demo strategy. Not a pitch deck in Markdown.*
 
+![opensource](https://img.shields.io/badge/stack-100%25%20open--source-2ecc71?style=for-the-badge)
+
 [Rules](#-what-we-know) · [Round 1](#-round-1--codechef-prep) · [Architecture](#-the-architecture-we-pre-build) · [Build day](#-round-2--build-day-timeline) · [Winning](#-how-we-win) · [Demo](#-the-demo-script) · [Checklist](#-pre-event-checklist)
 
 </div>
@@ -25,7 +27,10 @@
 | **Round 1** | Online, track-specific, on **CodeChef**. Covers speech recognition, TTS, voice processing, conversational AI. Performance decides who reaches Round 2. |
 | **Round 2** | Problem statement is revealed **on the day**. We build from scratch against it. |
 | **Allowed** | Any voice/AI API: STT, TTS, LLMs, real-time comms platforms. |
+| **Our stack** | **Open-source only** — no paid API keys, no vendor lock-in, no "ran out of credits" mid-demo. Everything below runs locally or self-hosted. |
 | **Unknown** | The problem statement, judging rubric weights, time limit, team size limits. *Confirm with organisers.* |
+
+> **Why open-source, not just "allowed":** free-tier API keys are the #1 hackathon demo killer — rate limits, billing holds, and captive wifi blocking outbound calls to a third-party host. A model running in-process on our own laptop has none of those failure modes, and it's an easy differentiator: judges have seen the same three commercial API names in every other team's stack all day.
 
 > **The core insight:** we can't know the problem, but we *can* know the plumbing. Every voice problem statement needs the same loop: **hear → understand → act → speak**. Teams that spend Round 2 wiring up audio I/O lose to teams that arrive with that solved and spend the whole time on the *problem*.
 
@@ -181,18 +186,43 @@ Target **< 1 s from end of user speech to first audio out.** Below ~700 ms it fe
 
 We display this live on screen during the demo. Measured numbers beat claims.
 
-### Stack decision (pick once, in advance)
+### Stack decision — 100% open-source (pick once, in advance)
 
-| Layer | Primary | Fallback | Why |
+| Layer | Primary (open-source) | Fallback (open-source) | Why |
 |---|---|---|---|
-| Transport | **LiveKit** or **Pipecat** | plain WebSocket + browser `AudioWorklet` | handles WebRTC, jitter, echo; saves hours |
-| VAD | Silero VAD | WebRTC VAD | runs locally, no network hop |
-| STT | Deepgram streaming | Whisper (local/API) | low-latency streaming with interim results |
-| LLM | fast tool-calling model | second provider | keep two keys ready, hackathon wifi lies |
-| TTS | ElevenLabs / Cartesia streaming | OS-native TTS | Cartesia/ElevenLabs for quality, OS-native so demo never dies |
+| Transport | **LiveKit** (OSS server, self-hosted) or **Pipecat** | plain WebSocket + browser `AudioWorklet` | both are Apache/BSD-licensed, self-hostable, no managed-cloud dependency |
+| VAD | **Silero VAD** | WebRTC VAD (`py-webrtcvad`) | MIT-licensed, tiny, runs fully local, no network hop |
+| STT | **faster-whisper** (CTranslate2) or **whisper.cpp** — `base`/`small` for speed | **Vosk** (fully streaming, very low latency) | Whisper variants: best accuracy per param; Vosk: true partial/streaming results with a smaller footprint |
+| LLM | **Ollama** running **Llama 3.1 8B** or **Qwen2.5 7B-Instruct** (tool-calling capable) | smaller quantised model (e.g. `llama3.2:3b`) for laptops without a GPU | local inference, zero API cost, no rate limit, no wifi dependency |
+| TTS | **Piper** (fast, streaming, CPU-friendly) | **Coqui TTS (XTTS-v2)** for higher-quality/expressive voice if GPU available | Piper: near-instant first-byte, good enough quality, runs on a laptop CPU; Coqui: better prosody when there's headroom |
 | UI | Next.js or plain Vite page | — | live transcript + state + latency chart |
 
-> ⚠️ Don't pick by hype. Pick the stack we've **already tested together**, then stick with it. A fallback for every layer is mandatory: venue wifi and API rate limits will hit at the worst time.
+**License check** — everything above is MIT/Apache/BSD, safe to self-host and demo without a cloud account:
+
+| Tool | License |
+|---|---|
+| LiveKit / Pipecat | Apache-2.0 |
+| Silero VAD | MIT |
+| faster-whisper / whisper.cpp | MIT |
+| Vosk | Apache-2.0 |
+| Ollama | MIT |
+| Llama 3.1 / Qwen2.5 | Meta Llama Community / Apache-2.0 (check model card before redistribution) |
+| Piper | MIT |
+| Coqui TTS (XTTS-v2) | Coqui Public Model License — **non-commercial**; fine for a hackathon demo, don't ship it commercially without checking |
+
+> ⚠️ Don't pick by hype. Pick the stack we've **already tested together**, then stick with it. A fallback for every layer is mandatory — but since nothing here depends on a remote API, our main risk shifts from "wifi/rate-limits died" to **"this laptop's CPU/GPU is too slow."** Benchmark real latency on the actual demo machine before the event, not on someone's gaming PC.
+
+### Hardware reality check
+
+Local models need local compute. Before committing to a model size, test end-to-end latency **on the exact laptop that will run the demo**:
+
+| Component | No GPU (CPU only) | With a GPU (6GB+ VRAM) |
+|---|---|---|
+| STT | `faster-whisper` `base`, int8 quantised | `small`/`medium`, fp16 |
+| LLM | `llama3.2:3b` or `qwen2.5:3b` via Ollama | `llama3.1:8b` / `qwen2.5:7b` |
+| TTS | Piper (always CPU-fast) | Coqui XTTS-v2 for quality |
+
+If the demo machine is CPU-only, default to the smaller column — a fast-but-simple bot beats a smart-but-laggy one on stage.
 
 ---
 
@@ -331,12 +361,13 @@ Backup plan, in order: live mic → pre-recorded audio file fed through the same
 
 Everything here is done **before** Round 2, so build day is only the problem.
 
-**Accounts & keys** (two providers per layer)
-- [ ] STT key + fallback
-- [ ] LLM key + fallback
-- [ ] TTS key + fallback
-- [ ] Keys in `.env`, `.env.example` committed, `.env` gitignored
-- [ ] Confirm free-tier rate limits won't cut us off mid-demo
+**Local models** (no API keys needed — pull everything ahead of time, venue wifi is not to be trusted)
+- [ ] Ollama installed, `llama3.1:8b` (or `qwen2.5:7b`) **and** a smaller fallback (`llama3.2:3b`) pulled locally
+- [ ] `faster-whisper` model weights downloaded (`base` + `small`) — also grab Vosk model as the streaming fallback
+- [ ] Piper voice model downloaded; Coqui XTTS-v2 downloaded if the demo machine has a GPU
+- [ ] Silero VAD weights cached locally (downloads once, then fully offline)
+- [ ] Full pipeline run **with wifi off** end-to-end, at least once, to prove there's no hidden network dependency
+- [ ] Benchmarked latency on the actual demo laptop (see [hardware reality check](#hardware-reality-check))
 
 **Skeleton repo** (`/skeleton`, to be built)
 - [ ] Browser mic → streaming STT → LLM → streaming TTS → speaker, working
@@ -371,12 +402,13 @@ rvhack/
 
 ---
 
-## 🔗 Useful references
+## 🔗 Useful references (all open-source)
 
 - [LiveKit Agents](https://docs.livekit.io/agents/) · [Pipecat](https://github.com/pipecat-ai/pipecat) — realtime voice pipelines
 - [Silero VAD](https://github.com/snakers4/silero-vad) — local voice activity detection
-- [Deepgram docs](https://developers.deepgram.com/) · [OpenAI Whisper](https://github.com/openai/whisper) — STT
-- [ElevenLabs docs](https://elevenlabs.io/docs) · [Cartesia docs](https://docs.cartesia.ai/) — TTS
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) · [whisper.cpp](https://github.com/ggml-org/whisper.cpp) · [Vosk](https://alphacephei.com/vosk/) — open-source STT
+- [Ollama](https://ollama.com/) · [Llama 3.1](https://huggingface.co/meta-llama) · [Qwen2.5](https://huggingface.co/Qwen) — local LLMs with tool-calling
+- [Piper TTS](https://github.com/rhasspy/piper) · [Coqui TTS / XTTS-v2](https://github.com/coqui-ai/TTS) — open-source TTS
 - [CodeChef](https://www.codechef.com/) — Round 1 platform
 
 ---
