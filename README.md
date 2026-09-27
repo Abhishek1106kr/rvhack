@@ -103,6 +103,8 @@ Practise these as plain algorithm problems. CodeChef assessments reward correct 
 
 </details>
 
+**Mock test:** [`docs/signal-check-mock-test.pdf`](docs/signal-check-mock-test.pdf) — 12 concept MCQs (with answers and explanations) and 5 CodeChef-style coding problems (statement, constraints, sample I/O, approach, reference Python solution) covering the topics above. Print it or read it on any device.
+
 **Round 1 tracker** — tick these off as we go:
 
 - [ ] Implement WER from scratch (Levenshtein, O(nm))
