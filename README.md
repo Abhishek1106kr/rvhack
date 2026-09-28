@@ -387,20 +387,23 @@ Everything here is done **before** Round 2, so build day is only the problem.
 
 ---
 
-## 🗂️ Repo layout (planned)
+## 🗂️ Repo layout
 
 ```
 rvhack/
 ├── README.md            ← this file
-├── skeleton/            ← reusable voice loop (audio, VAD, STT, TTS, orchestrator)
-│   ├── audio/
-│   ├── orchestrator/
-│   ├── tools/           ← the only folder that changes per problem
-│   └── ui/
-├── evals/               ← scripted utterances + pass/fail runner
-├── prep/                ← Round 1 practice solutions (WER, VAD, DP)
-└── demo/                ← script, backup video, slides
+├── CLAUDE.md            ← engineering rules for ARC
+├── backend/             ← ARC runtime (reusable; never imports problem/)
+│   ├── app/             ← events, session state, agent loop, tools, adapters
+│   └── tests/
+├── frontend/            ← Next.js control room
+├── problem/             ← hackathon-specific code — the only part that changes per problem
+├── evals/               ← deterministic scenario evaluation
+├── chaos/               ← failure injection
+└── docs/                ← specs (start with docs/phase1-runtime-core.md)
 ```
+
+Backend: `cd backend && uv sync && uv run pytest`
 
 ---
 
