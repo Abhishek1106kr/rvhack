@@ -14,7 +14,7 @@ SILERO_URL := https://github.com/snakers4/silero-vad/raw/v6.2/src/silero_vad/dat
 export ARC_MODELS_DIR := $(MODELS)
 export ARC_LLM_MODEL
 
-.PHONY: install models dev dev-backend dev-frontend dev-ollama test lint check eval-live
+.PHONY: install models dev dev-backend dev-frontend dev-ollama test lint check eval-live deploy deploy-logs deploy-down
 
 install:
 	cd backend && $(UV) sync
@@ -61,3 +61,14 @@ check: lint test
 # Real model decisions + latency (needs `make models` and Ollama running).
 eval-live:
 	cd backend && PYTHONPATH=$(CURDIR) $(UV) run python -m problem.evaluation.live_eval
+
+# Production stack: Ollama + backend + control room behind Caddy (see docs/deploy.md).
+deploy:
+	docker compose up -d --build
+	@echo "ARC is starting on http://localhost:$${ARC_HTTP_PORT:-8080} (first run pulls the LLM)"
+
+deploy-logs:
+	docker compose logs -f backend caddy
+
+deploy-down:
+	docker compose down

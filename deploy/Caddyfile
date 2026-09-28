@@ -1,0 +1,16 @@
+# Single entry point for ARC.
+#   ARC_SITE=:80                (default) plain HTTP — fine on localhost, where browsers allow the mic
+#   ARC_SITE=voice.example.com  automatic HTTPS via Let's Encrypt — required for the mic anywhere else
+{$ARC_SITE::80} {
+	encode gzip
+
+	# Backend: session WebSocket, health, traces. The /api prefix is stripped,
+	# matching the Next.js dev rewrite, so the frontend uses the same URLs everywhere.
+	handle_path /api/* {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

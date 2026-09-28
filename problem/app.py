@@ -39,7 +39,7 @@ stt = WhisperSTT(
     WHISPER_MODEL, download_root=MODELS / "whisper", initial_prompt=catalog.stt_vocabulary()
 )
 tts = PiperTTS(MODELS / "piper" / "en_US-lessac-medium.onnx")
-llm = OllamaLLM(LLM_MODEL)
+llm = OllamaLLM(LLM_MODEL, base_url=os.environ.get("ARC_OLLAMA_URL", "http://127.0.0.1:11434"))
 
 
 def make_adapters() -> Adapters:

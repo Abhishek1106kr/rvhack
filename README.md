@@ -403,6 +403,7 @@ rvhack/
 ├── problem/             ← the current problem: a voice product assistant (see problem/README.md)
 ├── frontend/            ← Next.js control room
 ├── models/              ← downloaded weights (gitignored; `make models`)
+├── compose.yaml, deploy/ ← Docker deployment (docs/deploy.md)
 └── docs/                ← specs (start with docs/phase1-runtime-core.md)
 ```
 
@@ -417,6 +418,7 @@ Needs `uv`, `pnpm`, and [Ollama](https://ollama.com) installed. From the repo ro
 | `make dev` | Ollama (if not running) + backend on :8000 + control room on :3000. Open :3000, click **start mic**, talk. |
 | `make check` | ruff, eslint, `tsc`, and all deterministic tests (runtime + problem scenarios) |
 | `make eval-live` | the problem scenarios against the **real** model: tool choice, grounding, latency |
+| `make deploy` | production stack in Docker (Ollama + backend + control room behind Caddy) on :8080 — see [docs/deploy.md](docs/deploy.md) |
 
 The browser only talks to :3000; `/api/*` (including the session WebSocket) is proxied to the backend.
 Use a headset: laptop speakers feed the assistant's voice back into the mic.

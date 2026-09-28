@@ -1,0 +1,75 @@
+# ARC deployment. `make deploy` or `docker compose up -d --build`; open http://localhost:8080.
+# See docs/deploy.md for HTTPS on a domain, GPUs, and offline use.
+
+name: arc
+
+services:
+  # CPU-only build of the official release (see deploy/ollama/Dockerfile).
+  # NVIDIA GPU: replace `build` with `image: ollama/ollama` and uncomment `deploy` below.
+  ollama:
+    build: deploy/ollama
+    image: arc-ollama
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    # deploy:  # requires nvidia-container-toolkit on the host
+    #   resources:
+    #     reservations:
+    #       devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+
+  # One-shot: pull the LLM into the volume (a no-op once it is there).
+  ollama-pull:
+    image: arc-ollama
+    environment:
+      OLLAMA_HOST: ollama:11434
+    entrypoint: ["ollama", "pull", "${ARC_LLM_MODEL:-qwen2.5:1.5b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      ARC_LLM_MODEL: ${ARC_LLM_MODEL:-qwen2.5:1.5b}
+      ARC_OLLAMA_URL: http://ollama:11434
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    environment:
+      ARC_SITE: ${ARC_SITE:-:80}
+    ports:
+      - "${ARC_HTTP_PORT:-8080}:80"
+      - "${ARC_HTTPS_PORT:-8443}:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  ollama:
+  caddy-data:
+  caddy-config:
