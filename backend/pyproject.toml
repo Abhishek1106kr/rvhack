@@ -5,6 +5,11 @@ description = "ARC realtime voice-agent runtime"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.141.1",
+    "faster-whisper>=1.2.1",
+    "httpx>=0.28.1",
+    "numpy>=2.5.3",
+    "onnxruntime>=1.30.0",
+    "piper-tts>=1.8.0",
     "pydantic>=2.8",
     "uvicorn[standard]>=0.54.0",
 ]
@@ -22,8 +27,9 @@ dev = [
 package = false
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["."]
+# problem/evaluation holds the domain scenarios; it imports the runtime, never the reverse.
+testpaths = ["tests", "../problem/evaluation"]
+pythonpath = [".", ".."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 # A hung cancellation path must fail the test, not hang CI.
@@ -35,3 +41,6 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "ASYNC", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "problem", "tests"]

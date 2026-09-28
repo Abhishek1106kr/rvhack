@@ -225,8 +225,11 @@ class FakeClient:
                              it is reported only in the flush reply.
     """
 
-    def __init__(self, respond_to_flush: bool = True) -> None:
+    def __init__(self, respond_to_flush: bool = True, auto_play: bool = False) -> None:
+        """auto_play: ACK each sentence as soon as it is fully sent (live evals, no audio)."""
         self.session: VoiceSession | None = None
+        self.auto_play = auto_play
+        self._tasks: set[asyncio.Task[None]] = set()
         self.audio: list[AudioOut] = []
         self.flushes: list[str] = []
         # Audio chunks and flushes in the order the server sent them.
@@ -237,6 +240,11 @@ class FakeClient:
     async def send_audio(self, chunk: AudioOut) -> None:
         self.audio.append(chunk)
         self.log.append(chunk)
+        if self.auto_play and chunk.is_last:
+            # Scheduled, not awaited: the session marks the sentence sent before the ACK lands.
+            task = asyncio.create_task(self.play(chunk.turn_id, chunk.sentence_id))
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
 
     async def send_flush(self, turn_id: str) -> None:
         self.flushes.append(turn_id)

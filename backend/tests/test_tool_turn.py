@@ -128,3 +128,47 @@ async def test_tool_round_limit(make_session) -> None:
     assert len(h.events(ToolCallFinished)) == 1
     assert "tool-call limit" in h.events(Error)[0].message
     assert h.states()[-1] is S.LISTENING
+
+
+async def test_planner_grounds_the_llm_before_it_speaks(make_session) -> None:
+    def planner(messages) -> list[ToolCallRequest]:
+        assert messages[-1].content == "weather in pune?"
+        return [request({"city": "Pune"})]
+
+    h = await make_session(
+        [[TextDelta(text="31 degrees in Pune.")]],
+        tools=[tool()],
+        config=SessionConfig(planner=planner),
+    )
+    await h.session.handle_text("weather in pune?")
+    await finish(h)
+
+    (started,) = [e for e in h.all_events() if e.event_type == "TOOL_CALL_STARTED"]
+    assert started.requested_by == "planner"
+    # One LLM call, and it already has the tool result: no tool-call round-trip.
+    assert len(h.llm.calls) == 1
+    assert json.loads(h.llm.calls[0][-1].content)["output"]["high_c"] == 31
+    assert h.states() == [
+        S.LISTENING,
+        S.THINKING,
+        S.TOOL_EXECUTION,
+        S.THINKING,
+        S.SPEAKING,
+        S.LISTENING,
+    ]
+
+
+async def test_planner_crash_is_reported_and_llm_still_answers(make_session) -> None:
+    def planner(messages):
+        raise ValueError("bad regex")
+
+    h = await make_session(
+        [[TextDelta(text="Still answering.")]],
+        tools=[tool()],
+        config=SessionConfig(planner=planner),
+    )
+    await h.session.handle_text("hello")
+    finished = await finish(h)
+    (error,) = h.events(Error)
+    assert error.stage == "planner" and "bad regex" in error.message
+    assert finished.spoken_text == "Still answering."

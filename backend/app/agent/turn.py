@@ -15,6 +15,16 @@ from app.events import TurnOutcome
 # Split after . ! ? followed by whitespace, or on newlines. "Dr. Smith" will split;
 # acceptable for TTS pacing, and never affects what is committed.
 _BOUNDARY = re.compile(r"(?<=[.!?])\s+|\n+")
+# Markdown the LLM may emit despite instructions; a TTS voice would read it out.
+_EMPHASIS = re.compile(r"[*#`~]+")
+_LIST_MARKER = re.compile(r"^\s*(?:[-•]|\d+[.)])\s+")
+_SPACE_BEFORE_PUNCT = re.compile(r"\s+([,.!?;:])")
+
+
+def speakable(text: str) -> str:
+    """Text as it should be voiced (and committed): no markdown, single-spaced."""
+    text = _LIST_MARKER.sub("", _EMPHASIS.sub("", text)).replace("_", " ")
+    return _SPACE_BEFORE_PUNCT.sub(r"\1", " ".join(text.split()))
 
 
 class SentenceSplitter:
@@ -25,10 +35,10 @@ class SentenceSplitter:
         self._buffer += text
         parts = _BOUNDARY.split(self._buffer)
         self._buffer = parts.pop()
-        return [p.strip() for p in parts if p.strip()]
+        return [s for p in parts if (s := speakable(p))]
 
     def flush(self) -> list[str]:
-        rest, self._buffer = self._buffer.strip(), ""
+        rest, self._buffer = speakable(self._buffer), ""
         return [rest] if rest else []
 
 
@@ -44,6 +54,8 @@ class Sentence:
     id: int
     text: str
     status: SentenceStatus = SentenceStatus.PENDING
+    # A runtime acknowledgement ("Let me check that.") spoken while the answer is not ready.
+    filler: bool = False
 
 
 @dataclass(frozen=True)
@@ -72,8 +84,8 @@ class AssistantTurn:
     def finalized(self) -> bool:
         return self._commit is not None
 
-    def add(self, text: str) -> Sentence:
-        sentence = Sentence(id=len(self.sentences) + 1, text=text)
+    def add(self, text: str, filler: bool = False) -> Sentence:
+        sentence = Sentence(id=len(self.sentences) + 1, text=text, filler=filler)
         self.sentences.append(sentence)
         return sentence
 

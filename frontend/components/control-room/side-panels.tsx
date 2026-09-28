@@ -10,7 +10,8 @@ const STAGES: { key: keyof StageTimings; label: string }[] = [
   { key: "llm_ms", label: "LLM" },
   { key: "tool_ms", label: "TOOL" },
   { key: "tts_ms", label: "TTS" },
-  { key: "total_ms", label: "TOTAL" },
+  { key: "first_audio_ms", label: "1ST AUDIO" },
+  { key: "total_ms", label: "ANSWER" },
 ];
 
 const RECENT = 5;
@@ -54,7 +55,10 @@ export function LatencyPanel({ view }: { view: SessionView }) {
           </tbody>
         </table>
       )}
-      <p className="mt-2 text-[11px] text-muted-foreground">— = stage did not run (e.g. typed input skips VAD/STT)</p>
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        1ST AUDIO includes an acknowledgement (&ldquo;Let me check that&rdquo;); ANSWER is the
+        first sentence of the real answer. — = stage did not run (typed input skips VAD/STT).
+      </p>
     </Panel>
   );
 }
@@ -82,7 +86,21 @@ export function ToolsPanel({ view }: { view: SessionView }) {
             return (
               <li key={`${call.callId}-${call.startedMono}`} className="rounded border p-2">
                 <div className="flex justify-between gap-2">
-                  <span className="font-semibold">{call.tool}</span>
+                  <span>
+                    <span className="font-semibold">{call.tool}</span>
+                    {call.requestedBy && (
+                      <span
+                        className="ml-2 text-muted-foreground"
+                        title={
+                          call.requestedBy === "planner"
+                            ? "chosen by the problem's deterministic planner"
+                            : "requested by the LLM"
+                        }
+                      >
+                        by {call.requestedBy}
+                      </span>
+                    )}
+                  </span>
                   {!outcome && <span className="text-violet-700">running</span>}
                   {outcome?.event_type === "TOOL_CALL_FINISHED" && (
                     <span className="text-emerald-700">ok · {outcome.duration_ms.toFixed(0)} ms</span>

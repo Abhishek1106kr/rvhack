@@ -393,25 +393,49 @@ Everything here is done **before** Round 2, so build day is only the problem.
 rvhack/
 ├── README.md            ← this file
 ├── CLAUDE.md            ← engineering rules for ARC
-├── backend/             ← ARC runtime (reusable; never imports problem/)
-│   ├── app/             ← events, session state, agent loop, tools, adapters
-│   └── tests/
+├── backend/app/         ← ARC runtime (reusable; never imports problem/)
+│   ├── events.py, bus.py, trace.py      typed events, in-process bus, trace + stage timings
+│   ├── session/state.py                 explicit session state machine
+│   ├── agent/                           turn lifecycle, barge-in, sentence-ACK commit rule
+│   ├── tools/                           registry + executor (validation, timeouts, no retries)
+│   ├── adapters/                        silero · whisper · ollama · piper, plus deterministic fakes
+│   └── ws.py, main.py                   WebSocket transport, trace endpoints
+├── problem/             ← the current problem: a voice product assistant (see problem/README.md)
 ├── frontend/            ← Next.js control room
-├── problem/             ← hackathon-specific code — the only part that changes per problem
-├── evals/               ← deterministic scenario evaluation
-├── chaos/               ← failure injection
+├── models/              ← downloaded weights (gitignored; `make models`)
 └── docs/                ← specs (start with docs/phase1-runtime-core.md)
 ```
 
-From the repo root (needs `uv`, `pnpm`):
+### Run it
+
+Needs `uv`, `pnpm`, and [Ollama](https://ollama.com) installed. From the repo root:
 
 | Command | Does |
 |---|---|
 | `make install` | `uv sync` (backend) + `pnpm install` (workspace) |
-| `make dev` | backend on :8000 + control room on :3000; Ctrl+C stops both |
-| `make check` | ruff, eslint, `tsc`, pytest |
+| `make models` | downloads Silero VAD, Whisper `base.en`, the Piper voice, and pulls the Ollama model (~1.3 GB). **Do this on good wifi before the event.** |
+| `make dev` | Ollama (if not running) + backend on :8000 + control room on :3000. Open :3000, click **start mic**, talk. |
+| `make check` | ruff, eslint, `tsc`, and all deterministic tests (runtime + problem scenarios) |
+| `make eval-live` | the problem scenarios against the **real** model: tool choice, grounding, latency |
 
-The browser only talks to :3000; `/api/*` is proxied to the backend.
+The browser only talks to :3000; `/api/*` (including the session WebSocket) is proxied to the backend.
+Use a headset: laptop speakers feed the assistant's voice back into the mic.
+
+Knobs (env or `make VAR=...`): `ARC_LLM_MODEL` (default `qwen2.5:1.5b`; use `qwen2.5:3b` with a GPU),
+`ARC_WHISPER_MODEL` (default `base.en`), `ARC_APP=app.main:app` to run the runtime alone with
+no models (echo LLM + tone TTS).
+
+### Measured on this repo's 4-core, no-GPU Codespace
+
+| | |
+|---|---|
+| Live eval (`make eval-live`, qwen2.5:1.5b) | 7/7 scenarios pass |
+| Whisper `base.en` int8, 3 s utterance | ~1.0 s |
+| First audio (acknowledgement) after end of speech | ~2.3 s |
+| First answer audio after end of speech | ~5–6.5 s (LLM prompt processing dominates) |
+| Barge-in: user speech → assistant audio stopped | ~0.3 s |
+
+A laptop with a recent CPU or any GPU will be several times faster. Measure on the demo machine.
 
 ---
 

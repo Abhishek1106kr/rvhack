@@ -4,7 +4,7 @@ The problem layer builds its own Runtime (tools, prompt, adapters) and passes it
 app.main.create_app; the runtime never imports problem code.
 """
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from app.adapters.base import Adapters
@@ -27,6 +27,8 @@ class Runtime:
     config: SessionConfig = field(default_factory=SessionConfig)
     bus: EventBus = field(default_factory=EventBus)
     trace: TraceStore = field(default_factory=TraceStore)
+    # Run once at server start, in the background (e.g. load the LLM so turn one isn't slow).
+    warm_up: Callable[[], Awaitable[None]] | None = None
 
     def __post_init__(self) -> None:
         self.bus.subscribe(self.trace)

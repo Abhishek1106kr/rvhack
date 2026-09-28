@@ -4,7 +4,7 @@ import asyncio
 import json
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ValidationError
 from pydantic_core import to_jsonable_python
@@ -48,7 +48,12 @@ class ToolExecutor:
         self._emit = emit
 
     async def execute(
-        self, call: ToolCallRequest, *, session_id: str, turn_id: str | None
+        self,
+        call: ToolCallRequest,
+        *,
+        session_id: str,
+        turn_id: str | None,
+        requested_by: Literal["llm", "planner"] = "llm",
     ) -> ToolResult:
         """validate → TOOL_CALL_STARTED → run with timeout → FINISHED / FAILED.
 
@@ -92,6 +97,7 @@ class ToolExecutor:
                 call_id=call.call_id,
                 tool=call.name,
                 arguments=arguments.model_dump(mode="json"),
+                requested_by=requested_by,
             )
         )
         started = time.monotonic()

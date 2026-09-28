@@ -40,7 +40,10 @@ class StageTimings(BaseModel):
     llm_ms: float | None = None
     tool_ms: float | None = None
     tts_ms: float | None = None
+    # End of user input → first audio of the actual answer (fillers excluded).
     total_ms: float | None = None
+    # End of user input → first audio of any kind, including a filler acknowledgement.
+    first_audio_ms: float | None = None
 
 
 class AdapterNames(BaseModel):
@@ -118,6 +121,8 @@ class ToolCallStarted(_EventBase):
     tool: str
     # Tool schemas are defined per tool, so validated arguments are carried as JSON.
     arguments: dict[str, Any]
+    # Who decided to call it: the model, or the problem layer's deterministic planner.
+    requested_by: Literal["llm", "planner"]
 
 
 class ToolCallFinished(_EventBase):
@@ -143,6 +148,7 @@ class TtsStarted(_EventBase):
     sentence_id: int
     text: str
     synth_ms: float
+    filler: bool = False
 
 
 class TtsStopped(_EventBase):
@@ -167,7 +173,7 @@ class UserBargeIn(_EventBase):
 
 
 ErrorStage = Literal[
-    "audio", "stt", "llm", "tool", "tts", "transport", "cancellation", "bus", "runtime"
+    "audio", "stt", "llm", "tool", "tts", "transport", "cancellation", "bus", "planner", "runtime"
 ]
 
 

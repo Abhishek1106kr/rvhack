@@ -1,0 +1,63 @@
+[
+  {
+    "id": "moto-68w-turbopower-charger",
+    "name": "Motorola 68W TurboPower Charger",
+    "brand": "Motorola",
+    "category": "charger",
+    "description": "Power up your devices with the Motorola 68W TurboPower charger, engineered for ultra-fast and efficient charging. Featuring advanced GaN technology, it delivers high performance in a compact design while ensuring safety with built-in protection against overheating and overcharging. Compatible with smartphones, tablets, and other USB-C devices, it's perfect for reliable charging at home or on the go.",
+    "key_features": [
+      "68W TurboPower Fast Charging",
+      "USB-C Power Delivery Support",
+      "Wide Device Compatibility",
+      "Advanced Safety Protection",
+      "Compact Travel-Friendly Design",
+      "Efficient GaN Technology"
+    ],
+    "compatible_devices": [
+      "Motorola Edge 50 Pro",
+      "Edge 50 Ultra",
+      "Edge 50 Fusion",
+      "Edge 40 Neo",
+      "Edge 30 Pro",
+      "Edge 30 Fusion",
+      "Razr 50 Ultra",
+      "Razr 40",
+      "Moto G84 5G",
+      "Moto G54 5G",
+      "Moto G85 5G",
+      "Moto G45 5G",
+      "Moto G62 5G"
+    ],
+    "box_contents": ["68W Moto Charger x 1", "Type C to Type C Cable x 1"],
+    "specs": {
+      "Wattage": "68 W",
+      "Amperage": "5 A",
+      "Voltage": "240 V",
+      "Cable Type": "USB-C to USB-C",
+      "Cable Length": "1 m",
+      "Cable Included": "Yes",
+      "Number of Ports": "1 USB Type C",
+      "Port Type": "USB Type-C",
+      "Fast Charging": "Yes",
+      "Type of Sockets": "2 Pin Round",
+      "Colour": "Black",
+      "Unit": "1 unit",
+      "Certification": "BIS Certified",
+      "BIS License Number": "81016519",
+      "Length Without Packaging (cm)": "5.8",
+      "Breadth Without Packaging (cm)": "4.2",
+      "Height Without Packaging (cm)": "2.8"
+    },
+    "warranty": "1 Year brand warranty",
+    "return_policy": "Only replacement of the item is permitted, within 7 days of purchase, if it is found to be physically damaged, faulty or incorrect. The item must be unused and in original condition.",
+    "customer_care": {
+      "service_centre_email": "support@unigenlifestyle.com",
+      "service_centre_phone": "9871042010",
+      "store_email": "info@blinkit.com"
+    },
+    "manufacturer": "Genuine Innovations Private Limited., 84/3, 1st floor, UER 2, Mundaka, New Delhi-110041, India",
+    "marketer": "Genuine Innovations Private Limited., 84/3, 1st floor, UER 2, Mundaka, New Delhi-110041, India",
+    "country_of_origin": "India",
+    "disclaimer": "Every effort is made to maintain accuracy of all information. However, actual product packaging and materials may contain more and/or different information. It is recommended not to solely rely on the information presented."
+  }
+]

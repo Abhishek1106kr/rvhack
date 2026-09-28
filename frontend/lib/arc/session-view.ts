@@ -9,6 +9,7 @@ export type SentenceView = {
   // sending: audio going out · sent: fully sent, not yet played · played: client ACKed
   // cut: TTS was cancelled mid-sentence
   status: "sending" | "sent" | "played" | "cut";
+  filler: boolean; // runtime acknowledgement spoken while the answer was not ready
 };
 
 export type TurnView = {
@@ -25,6 +26,7 @@ export type ToolCallView = {
   callId: string;
   tool: string;
   arguments: Record<string, unknown> | null;
+  requestedBy: "llm" | "planner" | null;
   startedMono: number | null;
   outcome: EventOf<"TOOL_CALL_FINISHED"> | EventOf<"TOOL_CALL_FAILED"> | null;
 };
@@ -36,6 +38,7 @@ export type SessionView = {
   tools: string[];
   state: SessionState;
   stateReason: string | null;
+  userSpeaking: boolean;
   turns: TurnView[];
   toolCalls: ToolCallView[];
   errors: EventOf<"ERROR">[];
@@ -51,6 +54,7 @@ export const emptyView: SessionView = {
   tools: [],
   state: "IDLE",
   stateReason: null,
+  userSpeaking: false,
   turns: [],
   toolCalls: [],
   errors: [],
@@ -105,6 +109,7 @@ function updateToolCall(
       callId,
       tool,
       arguments: null,
+      requestedBy: null,
       startedMono: null,
       outcome: null,
     };
@@ -132,9 +137,17 @@ export function applyEvent(view: SessionView, event: ArcEvent): SessionView {
     case "SESSION_STATE_CHANGED":
       return { ...next, state: event.current, stateReason: event.reason };
     case "USER_SPEECH_STARTED":
-      return { ...next, turns: updateTurn(view.turns, turnId, (t) => ({ ...t, speaking: true })) };
+      return {
+        ...next,
+        userSpeaking: true,
+        turns: updateTurn(view.turns, turnId, (t) => ({ ...t, speaking: true })),
+      };
     case "USER_SPEECH_ENDED":
-      return { ...next, turns: updateTurn(view.turns, turnId, (t) => ({ ...t, speaking: false })) };
+      return {
+        ...next,
+        userSpeaking: false,
+        turns: updateTurn(view.turns, turnId, (t) => ({ ...t, speaking: false })),
+      };
     case "TRANSCRIPT_PARTIAL":
       return { ...next, turns: updateTurn(view.turns, turnId, (t) => ({ ...t, userText: event.text })) };
     case "TRANSCRIPT_FINAL":
@@ -154,6 +167,7 @@ export function applyEvent(view: SessionView, event: ArcEvent): SessionView {
             id: event.sentence_id,
             text: event.text,
             status: "sending",
+            filler: event.filler,
           })),
         ),
       };
@@ -165,6 +179,7 @@ export function applyEvent(view: SessionView, event: ArcEvent): SessionView {
             id: event.sentence_id,
             text: s?.text ?? "",
             status: event.reason === "completed" ? "sent" : "cut",
+            filler: s?.filler ?? false,
           })),
         ),
       };
@@ -177,6 +192,7 @@ export function applyEvent(view: SessionView, event: ArcEvent): SessionView {
             id: event.sentence_id,
             text: s?.text ?? "",
             status: "played",
+            filler: s?.filler ?? false,
           })),
         ),
       };
@@ -199,6 +215,7 @@ export function applyEvent(view: SessionView, event: ArcEvent): SessionView {
         toolCalls: updateToolCall(view.toolCalls, event.call_id, event.tool, (c) => ({
           ...c,
           arguments: event.arguments,
+          requestedBy: event.requested_by,
           startedMono: event.mono,
         })),
       };

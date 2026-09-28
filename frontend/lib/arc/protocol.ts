@@ -27,6 +27,7 @@ export type StageTimings = {
   tool_ms: number | null;
   tts_ms: number | null;
   total_ms: number | null;
+  first_audio_ms: number | null;
 };
 
 type Base = {
@@ -74,6 +75,7 @@ export type ArcEvent = Base &
         call_id: string;
         tool: string;
         arguments: Record<string, unknown>;
+        requested_by: "llm" | "planner";
       }
     | {
         event_type: "TOOL_CALL_FINISHED";
@@ -90,7 +92,13 @@ export type ArcEvent = Base &
         message: string;
         duration_ms: number | null;
       }
-    | { event_type: "TTS_STARTED"; sentence_id: number; text: string; synth_ms: number }
+    | {
+        event_type: "TTS_STARTED";
+        sentence_id: number;
+        text: string;
+        synth_ms: number;
+        filler: boolean;
+      }
     | { event_type: "TTS_STOPPED"; sentence_id: number; reason: "completed" | "cancelled" }
     | { event_type: "PLAYBACK_ACKED"; sentence_id: number; accepted: boolean }
     | {

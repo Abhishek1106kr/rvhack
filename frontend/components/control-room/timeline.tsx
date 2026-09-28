@@ -25,13 +25,13 @@ function summary(e: ArcEvent): string {
     case "AGENT_TURN_FINISHED":
       return `${e.outcome} · ${e.sentences_acked}/${e.sentences_total} committed`;
     case "TOOL_CALL_STARTED":
-      return `${e.tool}(${JSON.stringify(e.arguments)})`;
+      return `${e.tool}(${JSON.stringify(e.arguments)}) by ${e.requested_by}`;
     case "TOOL_CALL_FINISHED":
       return `${e.tool} ok ${e.duration_ms.toFixed(0)} ms`;
     case "TOOL_CALL_FAILED":
       return `${e.tool} ${e.error_kind}: ${e.message}`;
     case "TTS_STARTED":
-      return `#${e.sentence_id} "${e.text}"`;
+      return `#${e.sentence_id}${e.filler ? " ack" : ""} "${e.text}"`;
     case "TTS_STOPPED":
       return `#${e.sentence_id} ${e.reason}`;
     case "PLAYBACK_ACKED":

@@ -57,6 +57,14 @@ function Turn({ turn }: { turn: TurnView }) {
                 <p key={s.id} title={style.title} className={style.className}>
                   <span className="mr-1.5 inline-block w-3 font-mono">{style.mark}</span>
                   {s.text}
+                  {s.filler && (
+                    <span
+                      className="ml-2 font-mono text-[10px] text-muted-foreground no-underline"
+                      title="spoken by the runtime while the answer was not ready"
+                    >
+                      ack
+                    </span>
+                  )}
                 </p>
               );
             })}
@@ -76,7 +84,13 @@ function Turn({ turn }: { turn: TurnView }) {
             <span className={OUTCOME_STYLE[finished.outcome]}>{finished.outcome}</span>
             {turn.interruptedIn && <> during {turn.interruptedIn}</>} · committed{" "}
             {finished.sentences_acked}/{finished.sentences_total} sentences
-            {finished.timings.total_ms !== null && <> · first audio {finished.timings.total_ms} ms</>}
+            {finished.timings.first_audio_ms !== null && (
+              <> · first audio {finished.timings.first_audio_ms} ms</>
+            )}
+            {finished.timings.total_ms !== null &&
+              finished.timings.total_ms !== finished.timings.first_audio_ms && (
+                <> · answer {finished.timings.total_ms} ms</>
+              )}
           </>
         ) : (
           <span>turn {turn.turnId} in progress</span>
@@ -112,7 +126,7 @@ export function Conversation({
       <div className="flex h-full flex-col">
         <div className="min-h-0 flex-1 overflow-auto text-sm">
           {view.turns.length === 0 ? (
-            <Empty>No turns yet. Type what the user says below.</Empty>
+            <Empty>No turns yet. Start the mic and speak, or type what the user says below.</Empty>
           ) : (
             <ol>
               {view.turns.map((turn) => (

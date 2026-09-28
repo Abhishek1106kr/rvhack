@@ -101,6 +101,11 @@ def test_has_unacked_audio() -> None:
         (["It costs 3.5 dollars. Ok"], ["It costs 3.5 dollars.", "Ok"]),
         (["Line one\nLine two"], ["Line one", "Line two"]),
         (["Wait! Really? Yes."], ["Wait!", "Really?", "Yes."]),
+        (
+            ["**Yes**, it works.\n- Edge 50 Pro\n- Razr 40"],
+            ["Yes, it works.", "Edge 50 Pro", "Razr 40"],
+        ),
+        (["The `moto_g84` model. ## Done"], ["The moto g84 model.", "Done"]),
     ],
 )
 def test_sentence_splitter(deltas: list[str], expected: list[str]) -> None:

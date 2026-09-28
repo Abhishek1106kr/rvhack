@@ -178,3 +178,43 @@ async def test_close_finalizes_active_turn(make_session) -> None:
     assert finished.outcome is TurnOutcome.INTERRUPTED
     assert finished.spoken_text == "One."
     assert h.session.state is S.IDLE
+
+
+async def test_filler_covers_a_slow_answer_and_is_reported_honestly(make_session) -> None:
+    from app.adapters.fake import Gate
+    from app.events import TtsStarted
+
+    slow = Gate()
+    h = await make_session(
+        [[slow, TextDelta(text="Here is the answer.")]],
+        config=SessionConfig(filler_phrases=("One moment.",), filler_after_s=0.01),
+        with_audio=False,
+    )
+    await h.session.handle_text("hard question")
+    turn_id = await h.until_sentence_sent(0, 1)
+    slow.open()
+    await h.client.play(turn_id, 1)
+    await h.until(lambda: h.client.sentence_complete(turn_id, 2))
+    await h.client.play(turn_id, 2)
+    await h.until(lambda: bool(h.events(AgentTurnFinished)))
+
+    assert [(e.text, e.filler) for e in h.events(TtsStarted)] == [
+        ("One moment.", True),
+        ("Here is the answer.", False),
+    ]
+    finished = h.events(AgentTurnFinished)[0]
+    assert finished.spoken_text == "One moment. Here is the answer."  # it was heard
+    assert finished.timings.first_audio_ms < finished.timings.total_ms
+
+
+async def test_no_filler_when_the_answer_is_fast(make_session) -> None:
+    h = await make_session(
+        [[TextDelta(text="Quick.")]],
+        config=SessionConfig(filler_phrases=("One moment.",), filler_after_s=5),
+        with_audio=False,
+    )
+    await h.session.handle_text("easy question")
+    await complete_turn(h, 0, sentences=1)
+    finished = h.events(AgentTurnFinished)[0]
+    assert finished.spoken_text == "Quick."
+    assert finished.timings.first_audio_ms == finished.timings.total_ms

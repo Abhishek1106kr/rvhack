@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import type { MicState } from "@/lib/arc/microphone";
 import { SESSION_STATES } from "@/lib/arc/protocol";
 import type { SessionView } from "@/lib/arc/session-view";
 import type { Connection } from "@/lib/arc/use-arc-session";
@@ -11,6 +12,63 @@ const CONNECTION_LABEL: Record<Connection, string> = {
   open: "connected",
   closed: "disconnected · retrying",
 };
+
+const MIC_LABEL: Record<MicState, string> = {
+  off: "off",
+  starting: "starting…",
+  live: "live",
+  denied: "permission denied",
+  unavailable: "no microphone",
+  error: "failed to start",
+};
+
+function MicControl({
+  available,
+  state,
+  level,
+  userSpeaking,
+  onStart,
+  onStop,
+}: {
+  available: boolean;
+  state: MicState;
+  level: number;
+  userSpeaking: boolean;
+  onStart: () => void;
+  onStop: () => void;
+}) {
+  if (!available) return <span className="text-muted-foreground">no VAD/STT adapter</span>;
+  const live = state === "live";
+  return (
+    <span className="flex items-center gap-2">
+      <Button
+        size="xs"
+        variant={live ? "destructive" : "outline"}
+        onClick={live ? onStop : onStart}
+        disabled={state === "starting"}
+      >
+        {live ? "stop mic" : "start mic"}
+      </Button>
+      <span className={cn(state === "denied" || state === "error" ? "text-red-700" : "")}>
+        {MIC_LABEL[state]}
+      </span>
+      {live && (
+        <>
+          {/* Input RMS, scaled so normal speech fills most of the bar. */}
+          <span className="h-1.5 w-16 overflow-hidden rounded bg-muted" title="input level">
+            <span
+              className="block h-full bg-emerald-600"
+              style={{ width: `${Math.min(100, level * 400)}%` }}
+            />
+          </span>
+          <span className={userSpeaking ? "text-emerald-700" : "text-muted-foreground"}>
+            {userSpeaking ? "VAD: speech" : "VAD: silence"}
+          </span>
+        </>
+      )}
+    </span>
+  );
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -26,13 +84,21 @@ export function StatusBar({
   connection,
   audioUnlocked,
   playing,
+  micState,
+  micLevel,
   onUnlockAudio,
+  onStartMic,
+  onStopMic,
 }: {
   view: SessionView;
   connection: Connection;
   audioUnlocked: boolean;
   playing: boolean;
+  micState: MicState;
+  micLevel: number;
   onUnlockAudio: () => void;
+  onStartMic: () => void;
+  onStopMic: () => void;
 }) {
   const adapters = view.adapters;
   const micAvailable = Boolean(adapters?.vad && adapters?.stt);
@@ -53,7 +119,14 @@ export function StatusBar({
         </Field>
         <Field label="session">{view.sessionId ?? "—"}</Field>
         <Field label="mic">
-          {micAvailable ? "available" : <span className="text-muted-foreground">no VAD/STT adapter</span>}
+          <MicControl
+            available={micAvailable}
+            state={micState}
+            level={micLevel}
+            userSpeaking={view.userSpeaking}
+            onStart={onStartMic}
+            onStop={onStopMic}
+          />
         </Field>
         <Field label="speaker">
           {audioUnlocked ? (

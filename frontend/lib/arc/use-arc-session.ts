@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
+import { Microphone, micErrorState, type MicState } from "./microphone";
 import { SentencePlayer } from "./player";
 import type { ClientMessage, ServerMessage } from "./protocol";
 import { applyEvent, emptyView, type SessionView } from "./session-view";
@@ -28,8 +29,12 @@ export function useArcSession() {
   const [connection, setConnection] = useState<Connection>("connecting");
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [playing, setPlaying] = useState(false);
+  const [micState, setMicState] = useState<MicState>("off");
+  const [micLevel, setMicLevel] = useState(0);
   const socketRef = useRef<WebSocket | null>(null);
   const playerRef = useRef<SentencePlayer | null>(null);
+  const micRef = useRef<Microphone | null>(null);
+  const micLevelRef = useRef(0);
 
   const send = useCallback((message: ClientMessage) => {
     const socket = socketRef.current;
@@ -83,11 +88,16 @@ export function useArcSession() {
     };
   }, [send]);
 
-  // Playback state changes without a message arriving (audio simply ends).
+  // Playback ends and mic level moves without a message arriving: sample them.
   useEffect(() => {
-    const id = setInterval(() => setPlaying(playerRef.current?.playing ?? false), 150);
+    const id = setInterval(() => {
+      setPlaying(playerRef.current?.playing ?? false);
+      setMicLevel(micLevelRef.current);
+    }, 150);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => () => void micRef.current?.stop(), []);
 
   const unlockAudio = useCallback(async () => {
     await playerRef.current?.unlock();
@@ -102,5 +112,42 @@ export function useArcSession() {
     [send, unlockAudio],
   );
 
-  return { view, connection, audioUnlocked, playing, unlockAudio, sendText };
+  const startMic = useCallback(async () => {
+    await unlockAudio(); // the click that starts the mic also enables playback
+    setMicState("starting");
+    const mic = new Microphone();
+    try {
+      await mic.start((frame, rms) => {
+        micLevelRef.current = rms;
+        const socket = socketRef.current;
+        // Frames while disconnected are dropped: there is no session to hear them.
+        if (socket?.readyState === WebSocket.OPEN) socket.send(frame);
+      });
+      micRef.current = mic;
+      setMicState("live");
+    } catch (error) {
+      await mic.stop();
+      setMicState(micErrorState(error));
+    }
+  }, [unlockAudio]);
+
+  const stopMic = useCallback(async () => {
+    await micRef.current?.stop();
+    micRef.current = null;
+    micLevelRef.current = 0;
+    setMicState("off");
+  }, []);
+
+  return {
+    view,
+    connection,
+    audioUnlocked,
+    playing,
+    micState,
+    micLevel,
+    unlockAudio,
+    sendText,
+    startMic,
+    stopMic,
+  };
 }

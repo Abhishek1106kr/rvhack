@@ -17,6 +17,8 @@ import functools
 import logging
 import time
 import uuid
+from collections import deque
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -24,6 +26,7 @@ from app.adapters.base import (
     SAMPLE_RATE,
     Adapters,
     AudioOut,
+    Message,
     TextDelta,
     ToolCallRequest,
     Transport,
@@ -62,6 +65,11 @@ R = TransitionReason
 
 _INTERRUPTIBLE = frozenset({S.THINKING, S.TOOL_EXECUTION, S.SPEAKING})
 
+# Deterministic tool routing supplied by the problem layer. Given the conversation (last
+# message = the user's current utterance), returns tool calls the runtime runs *before* the
+# LLM, so answers are grounded even when a small model would skip or botch the tool call.
+Planner = Callable[[Sequence[Message]], list[ToolCallRequest]]
+
 
 @dataclass(frozen=True)
 class SessionConfig:
@@ -74,6 +82,13 @@ class SessionConfig:
     cancel_timeout_s: float = 1.0
     # LLM output is untrusted: bound how many tool rounds one turn may take.
     max_tool_rounds: int = 4
+    # Audio kept from before the VAD fires, so the first syllable reaches STT (10 × 32 ms).
+    preroll_frames: int = 10
+    planner: Planner | None = None
+    # Spoken if no answer sentence is ready this long after the turn starts. Real speech:
+    # it is ACKed and committed like any sentence, and flagged in TTS_STARTED/timings.
+    filler_phrases: tuple[str, ...] = ()
+    filler_after_s: float = 1.0
 
 
 class _StageFailure(Exception):
@@ -115,6 +130,7 @@ class VoiceSession:
         self._turn_events: dict[str, list[Event]] = {}
         self._background_tools: set[asyncio.Task[ToolResult]] = set()
         self._active_tool: str | None = None
+        self._fillers_spoken = 0
 
         # Inbound speech
         self._in_speech = False
@@ -123,6 +139,7 @@ class VoiceSession:
         # (turn_id, audio) of a turn still in STT; merged if the user resumes speaking.
         self._transcribing: tuple[str, bytes] | None = None
         self._audio_rejected = False
+        self._preroll: deque[bytes] = deque(maxlen=self.config.preroll_frames)
 
     # ── public API ────────────────────────────────────────────────────────────────────────
 
@@ -169,6 +186,8 @@ class VoiceSession:
             self._on_speech_start()
         if self._in_speech:
             self._utterance += frame
+        else:
+            self._preroll.append(frame)
         if signal is VADSignal.SPEECH_END and self._in_speech:
             self._on_speech_end(vad.silence_ms)
 
@@ -251,6 +270,8 @@ class VoiceSession:
             self._utterance += audio
         else:
             turn_id = self._open_turn_id()
+        self._utterance += b"".join(self._preroll)
+        self._preroll.clear()
         self._speech_turn_id = turn_id
         self._emit(UserSpeechStarted(session_id=self.session_id, turn_id=turn_id))
         if self.state in _INTERRUPTIBLE:
@@ -540,6 +561,42 @@ class VoiceSession:
         turn.finish_generation()
 
     async def _generate(self, turn: AssistantTurn, queue: asyncio.Queue[Sentence | None]) -> None:
+        filler = self._schedule_filler(turn, queue)
+        try:
+            await self._generate_answer(turn, queue, filler)
+        finally:
+            if filler is not None:
+                filler.cancel()
+        await queue.put(None)
+
+    def _schedule_filler(
+        self, turn: AssistantTurn, queue: asyncio.Queue[Sentence | None]
+    ) -> asyncio.Task[None] | None:
+        phrases = self.config.filler_phrases
+        if not phrases:
+            return None
+
+        async def speak_filler() -> None:
+            await asyncio.sleep(self.config.filler_after_s)
+            phrase = phrases[self._fillers_spoken % len(phrases)]
+            self._fillers_spoken += 1
+            await queue.put(turn.add(phrase, filler=True))
+
+        return asyncio.create_task(speak_filler(), name=f"filler-{turn.turn_id}")
+
+    async def _generate_answer(
+        self,
+        turn: AssistantTurn,
+        queue: asyncio.Queue[Sentence | None],
+        filler: asyncio.Task[None] | None,
+    ) -> None:
+        async def say(text: str) -> None:
+            if filler is not None:
+                filler.cancel()  # the answer is ready: no acknowledgement needed any more
+            await queue.put(turn.add(text))
+
+        for call in self._plan(turn):
+            await self._run_tool(turn, call, requested_by="planner")
         splitter = SentenceSplitter()
         for round_index in range(self.config.max_tool_rounds + 1):
             calls: list[ToolCallRequest] = []
@@ -549,7 +606,7 @@ class VoiceSession:
                 ):
                     if isinstance(chunk, TextDelta):
                         for text in splitter.feed(chunk.text):
-                            await queue.put(turn.add(text))
+                            await say(text)
                     else:
                         calls.append(chunk)
             except asyncio.CancelledError:
@@ -557,7 +614,7 @@ class VoiceSession:
             except Exception as exc:
                 raise _StageFailure("llm", exc) from exc
             for text in splitter.flush():
-                await queue.put(turn.add(text))
+                await say(text)
 
             if not calls:
                 break
@@ -570,14 +627,30 @@ class VoiceSession:
                 )
                 break
             for call in calls:
-                await self._run_tool(turn, call)
-        await queue.put(None)
+                await self._run_tool(turn, call, requested_by="llm")
 
-    async def _run_tool(self, turn: AssistantTurn, call: ToolCallRequest) -> None:
+    def _plan(self, turn: AssistantTurn) -> list[ToolCallRequest]:
+        if self.config.planner is None:
+            return []
+        try:
+            return self.config.planner(self.conversation.messages)
+        except Exception as exc:
+            # A planner bug must not cost the turn: the LLM can still call tools itself.
+            self._error("planner", f"{type(exc).__name__}: {exc}", True, turn.turn_id)
+            return []
+
+    async def _run_tool(
+        self,
+        turn: AssistantTurn,
+        call: ToolCallRequest,
+        requested_by: Literal["llm", "planner"],
+    ) -> None:
         if self.state in (S.THINKING, S.SPEAKING):
             self._machine.transition(S.TOOL_EXECUTION, R.TOOL_REQUESTED)
         task = asyncio.create_task(
-            self._executor.execute(call, session_id=self.session_id, turn_id=turn.turn_id),
+            self._executor.execute(
+                call, session_id=self.session_id, turn_id=turn.turn_id, requested_by=requested_by
+            ),
             name=f"tool-{call.name}-{call.call_id}",
         )
         task.add_done_callback(functools.partial(self._record_tool_result, call))
@@ -624,6 +697,7 @@ class VoiceSession:
                         sentence_id=sentence.id,
                         text=sentence.text,
                         synth_ms=round((time.monotonic() - synth_started) * 1000, 1),
+                        filler=sentence.filler,
                     )
                 )
                 if self.state is S.THINKING:

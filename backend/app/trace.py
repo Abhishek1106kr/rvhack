@@ -52,7 +52,9 @@ def stage_timings(turn_events: Iterable[Event]) -> StageTimings:
     speech_ended = _first(events, UserSpeechEnded)
     transcript = _first(events, TranscriptFinal)
     turn_started = _first(events, AgentTurnStarted)
-    first_tts = _first(events, TtsStarted)
+    audio = [e for e in events if isinstance(e, TtsStarted)]
+    first_any = audio[0] if audio else None
+    first_tts = next((e for e in audio if not e.filler), None)
     tool_events = [e for e in events if isinstance(e, ToolCallFinished | ToolCallFailed)]
 
     tool_ms = sum(e.duration_ms or 0.0 for e in tool_events) if tool_events else None
@@ -61,7 +63,10 @@ def stage_timings(turn_events: Iterable[Event]) -> StageTimings:
     if speech_ended and transcript:
         stt_ms = _ms(transcript.mono - speech_ended.mono)
 
-    llm_ms = tts_ms = total_ms = None
+    llm_ms = tts_ms = total_ms = first_audio_ms = None
+    anchor = speech_ended or transcript
+    if first_any and anchor:
+        first_audio_ms = _ms(first_any.mono - anchor.mono)
     if first_tts:
         tts_ms = round(first_tts.synth_ms, 1)
         first_sentence_ready = first_tts.mono - first_tts.synth_ms / 1000
@@ -70,7 +75,6 @@ def stage_timings(turn_events: Iterable[Event]) -> StageTimings:
                 e.duration_ms or 0.0 for e in tool_events if e.mono <= first_tts.mono
             )
             llm_ms = round(_ms(first_sentence_ready - turn_started.mono) - tools_before, 1)
-        anchor = speech_ended or transcript
         if anchor:
             total_ms = _ms(first_tts.mono - anchor.mono)
 
@@ -81,4 +85,5 @@ def stage_timings(turn_events: Iterable[Event]) -> StageTimings:
         tool_ms=round(tool_ms, 1) if tool_ms is not None else None,
         tts_ms=tts_ms,
         total_ms=total_ms,
+        first_audio_ms=first_audio_ms,
     )

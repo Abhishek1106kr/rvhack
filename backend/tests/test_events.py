@@ -58,7 +58,14 @@ ONE_OF_EACH = [
         sentences_total=2,
         timings=StageTimings(total_ms=640.0),
     ),
-    ToolCallStarted(session_id=SID, turn_id="t1", call_id="c1", tool="lookup", arguments={"q": 1}),
+    ToolCallStarted(
+        session_id=SID,
+        turn_id="t1",
+        call_id="c1",
+        tool="lookup",
+        arguments={"q": 1},
+        requested_by="llm",
+    ),
     ToolCallFinished(
         session_id=SID, turn_id="t1", call_id="c1", tool="lookup", result=[1, 2], duration_ms=3.0
     ),
