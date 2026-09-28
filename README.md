@@ -403,7 +403,15 @@ rvhack/
 └── docs/                ← specs (start with docs/phase1-runtime-core.md)
 ```
 
-Backend: `cd backend && uv sync && uv run pytest`
+From the repo root (needs `uv`, `pnpm`):
+
+| Command | Does |
+|---|---|
+| `make install` | `uv sync` (backend) + `pnpm install` (workspace) |
+| `make dev` | backend on :8000 + control room on :3000; Ctrl+C stops both |
+| `make check` | ruff, eslint, `tsc`, pytest |
+
+The browser only talks to :3000; `/api/*` is proxied to the backend.
 
 ---
 

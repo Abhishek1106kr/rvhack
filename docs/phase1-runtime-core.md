@@ -3,8 +3,9 @@
 Scope: the ARC runtime core, with deterministic fake adapters and tests.
 Runs with **no** GPU, microphone, sound device, Ollama, Whisper weights, or Piper weights.
 
-Out of scope for Phase 1: real model adapters, WebSocket server, frontend,
-`problem/`, chaos, evals runner.
+Out of scope for Phase 1: real model adapters, `problem/`, chaos, evals runner.
+Built beyond the original scope: the WebSocket transport (`app/ws.py`) and the control room
+(`frontend/`), driven by the dev adapters `EchoLLM` + `ToneTTS` (no models, no mic).
 
 Run: `cd backend && uv run pytest` · Lint: `uv run ruff check .`
 
@@ -67,21 +68,21 @@ so `TypeAdapter(Event).validate_json(...)` round-trips any event. No `dict` payl
 
 | Event | Payload |
 |---|---|
-| `SESSION_STARTED` | — |
+| `SESSION_STARTED` | `adapters` (vad/stt/llm/tts names), `tools` |
 | `SESSION_STATE_CHANGED` | `previous`, `current`, `reason` |
 | `USER_SPEECH_STARTED` | — |
 | `USER_SPEECH_ENDED` | `duration_ms` |
 | `TRANSCRIPT_PARTIAL` | `text` |
-| `TRANSCRIPT_FINAL` | `text`, `stt_ms` |
+| `TRANSCRIPT_FINAL` | `text`, `source` (`stt` \| `text`), `stt_ms` |
 | `AGENT_TURN_STARTED` | `user_text` |
-| `AGENT_TURN_FINISHED` | `outcome` (`completed` \| `interrupted` \| `failed`), `spoken_text`, `unspoken_text`, `sentences_acked`, `sentences_total` |
+| `AGENT_TURN_FINISHED` | `outcome` (`completed` \| `interrupted` \| `failed`), `spoken_text`, `unspoken_text`, `sentences_acked`, `sentences_total`, `timings` (§3) |
 | `TOOL_CALL_STARTED` | `call_id`, `tool`, `arguments` (validated) |
 | `TOOL_CALL_FINISHED` | `call_id`, `tool`, `result`, `duration_ms` |
 | `TOOL_CALL_FAILED` | `call_id`, `tool`, `error_kind`, `message`, `duration_ms` |
 | `TTS_STARTED` | `sentence_id`, `text`, `synth_ms` (sentence ready → first chunk sent) |
 | `TTS_STOPPED` | `sentence_id`, `reason` (`completed` \| `cancelled`) |
 | `PLAYBACK_ACKED` | `sentence_id` |
-| `USER_BARGE_IN` | `interrupted_state`, `cancelled` (what was cancelled: generation / tts / tool) |
+| `USER_BARGE_IN` | `interrupted_state`, `cancelled`: `generation` / `tts` / `tool` (read-only only) / `playback` (client audio stopped) |
 | `ERROR` | `stage`, `message`, `recoverable: bool` |
 
 `PLAYBACK_ACKED` is an addition to the CLAUDE.md minimum: without it the trace
@@ -125,13 +126,13 @@ Allowed transitions (anything else raises `InvalidTransition` — a bug, not a r
 |---|---|---|
 | IDLE | LISTENING | `session_started` |
 | LISTENING | THINKING | `transcript_final` (empty transcript → no transition, stay LISTENING) |
-| THINKING | SPEAKING | `first_audio_ready` |
+| THINKING | SPEAKING | `audio_started`, `awaiting_playback` |
 | THINKING | TOOL_EXECUTION | `tool_requested` |
 | THINKING | INTERRUPTED | `user_barge_in` |
 | THINKING | LISTENING | `empty_response` (LLM produced nothing speakable) |
 | TOOL_EXECUTION | THINKING | `tool_result` |
 | TOOL_EXECUTION | INTERRUPTED | `user_barge_in` |
-| SPEAKING | THINKING | `tool_requested` mid-response (optional; keep if the LLM streams text then a tool call) |
+| SPEAKING | TOOL_EXECUTION | `tool_requested` (LLM streamed text, then asked for a tool) |
 | SPEAKING | LISTENING | `playback_complete` |
 | SPEAKING | INTERRUPTED | `user_barge_in` |
 | INTERRUPTED | LISTENING | `interruption_handled` |
@@ -263,6 +264,9 @@ Tools during barge-in:
 - `risk = side_effect` → **do not cancel** (cancelling may leave external state
   half-written). Let it finish in the background, record its result/failure in
   the trace + history, discard the rest of the assistant turn.
+- The next turn waits for in-flight side-effecting tools before calling the LLM
+  (bounded by each tool's timeout), so the model never answers without knowing
+  whether the action happened.
 
 Implementation requirement: one `asyncio.Task` per active turn, owned by the
 orchestrator. Cancellation = `task.cancel()` + await with a bound. No flags polled

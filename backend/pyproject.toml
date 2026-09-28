@@ -4,11 +4,14 @@ version = "0.1.0"
 description = "ARC realtime voice-agent runtime"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "fastapi>=0.141.1",
     "pydantic>=2.8",
+    "uvicorn[standard]>=0.54.0",
 ]
 
 [dependency-groups]
 dev = [
+    "httpx2>=2.13.1",
     "pytest>=8",
     "pytest-asyncio>=0.24",
     "pytest-timeout>=2.3",
